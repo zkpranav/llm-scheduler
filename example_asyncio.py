@@ -14,29 +14,52 @@ from langchain.chat_models import init_chat_model
 
 
 class BatchedQueueAsync:
-    def __init__(self, n=1):
+    def __init__(self, n=1, timeout=5.0):
         self.n = n
+        self.timeout = timeout
         self.queue: Deque[Tuple[str, int]] = deque()
         self.cond_var = asyncio.Condition()
+
+        self.timeout_task = None
+
+    async def _timeout_handler(self):
+        try:
+            await asyncio.sleep(self.timeout)
+
+            async with self.cond_var:
+                if len(self.queue) > 0:
+                    self.cond_var.notify()
+        except asyncio.CancelledError:
+            pass
 
     async def add(self, item: Tuple[str, int]) -> None:
         async with self.cond_var:
             self.queue.append(item)
             if len(self.queue) >= self.n:
                 self.cond_var.notify()
+            elif self.timeout_task is None:
+                self.timeout_task = asyncio.create_task(self._timeout_handler())
 
     async def retrieve(self) -> list[Tuple[str, int]]:
         async with self.cond_var:
             while len(self.queue) < self.n:
                 await self.cond_var.wait()
 
-            batch = [self.queue.popleft() for _ in range(0, self.n, 1)]
+                break  # Either timeout hit or queue has enough items.
+
+            if self.timeout_task is not None:
+                self.timeout_task.cancel()
+                self.timeout_task = None
+
+            batch = [
+                self.queue.popleft() for _ in range(0, min(len(self.queue), self.n), 1)
+            ]
             return batch
 
 
 class LLMScheduler:
     def __init__(self):
-        self.queue = BatchedQueueAsync(n=2)
+        self.queue = BatchedQueueAsync(n=2, timeout=3.0)
         self.results: dict[uuid.UUID, asyncio.Future] = {}
 
         self.model = init_chat_model("llama3-8b-8192", model_provider="groq")
@@ -55,7 +78,7 @@ class LLMScheduler:
     async def worker(self):
         while True:
             batch = await self.queue.retrieve()
-            # print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
+            print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
 
             res = await self.model.abatch([b[1] for b in batch])
 
@@ -82,7 +105,8 @@ async def main():
         graph_builder.add_edge("add", END)
         graph = graph_builder.compile()
 
-        await asyncio.sleep(1 + 9 * random())  # 1s - 10s delay.
+        # await asyncio.sleep(1 + 9 * random())  # 1s - 10s delay.
+        await asyncio.sleep(0.5 + 1.5 * random())  # 1s - 10s delay.
         print(f"{name} queried.")
         res = await graph.ainvoke(
             {"messages": [{"role": "user", "content": f"Hello, I am {name}."}]}
@@ -106,7 +130,7 @@ async def main():
         ]
 
         tasks = []
-        for i in range(4):
+        for i in range(3):
             tasks.append(tg.create_task(user_thread(names[i])))
 
         await asyncio.gather(*tasks)
