@@ -2,7 +2,7 @@ import getpass
 import os
 import asyncio
 from collections import deque
-from typing import Deque, Tuple, Annotated
+from typing import Tuple, Annotated
 from random import random
 import uuid
 from typing_extensions import TypedDict
@@ -17,7 +17,7 @@ class BatchedQueueAsync:
     def __init__(self, n=1, timeout=5.0):
         self.n = n
         self.timeout = timeout
-        self.queue: Deque[Tuple[str, int]] = deque()
+        self.queue = deque()
         self.cond_var = asyncio.Condition()
 
         self.timeout_task = None
@@ -32,7 +32,7 @@ class BatchedQueueAsync:
         except asyncio.CancelledError:
             pass
 
-    async def add(self, item: Tuple[str, int]) -> None:
+    async def add(self, item: Tuple[str, int]):
         async with self.cond_var:
             self.queue.append(item)
             if len(self.queue) >= self.n:
@@ -40,7 +40,7 @@ class BatchedQueueAsync:
             elif self.timeout_task is None:
                 self.timeout_task = asyncio.create_task(self._timeout_handler())
 
-    async def retrieve(self) -> list[Tuple[str, int]]:
+    async def retrieve(self):
         async with self.cond_var:
             while len(self.queue) < self.n:
                 await self.cond_var.wait()
@@ -51,9 +51,8 @@ class BatchedQueueAsync:
                 self.timeout_task.cancel()
                 self.timeout_task = None
 
-            batch = [
-                self.queue.popleft() for _ in range(0, min(len(self.queue), self.n), 1)
-            ]
+            batch_size = min(len(self.queue), self.n)
+            batch = [self.queue.popleft() for _ in range(0, batch_size, 1)]
             return batch
 
 
