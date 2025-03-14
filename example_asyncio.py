@@ -36,7 +36,7 @@ class BatchedQueueAsync:
 
 class LLMScheduler:
     def __init__(self):
-        self.queue = BatchedQueueAsync(n=1)
+        self.queue = BatchedQueueAsync(n=2)
         self.results: dict[uuid.UUID, asyncio.Future] = {}
 
         self.model = init_chat_model("llama3-8b-8192", model_provider="groq")
@@ -55,7 +55,7 @@ class LLMScheduler:
     async def worker(self):
         while True:
             batch = await self.queue.retrieve()
-            print(f"Processing jobs: {", ".join([str(i[0]) for i in batch])}")
+            # print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
 
             res = await self.model.abatch([b[1] for b in batch])
 
@@ -67,22 +67,49 @@ class LLMScheduler:
 async def main():
     os.environ["GROQ_API_KEY"] = getpass.getpass("GROQ_API_KEY: ")
 
-    llm_singleton = LLMScheduler()
+    llm_scheduler = LLMScheduler()
 
     class GraphState(TypedDict):
         messages: Annotated[list, add_messages]
 
     async def chatbot(state: GraphState):
-        return {"messages": await llm_singleton(state["messages"])}
+        return {"messages": await llm_scheduler(state["messages"])}
 
-    graph_builder = StateGraph(GraphState)
-    graph_builder.add_node("add", chatbot)
-    graph_builder.add_edge(START, "add")
-    graph_builder.add_edge("add", END)
-    graph = graph_builder.compile()
-    res = await graph.ainvoke({"messages": [{"role": "user", "content": "Hello."}]})
+    async def user_thread(name: str):
+        graph_builder = StateGraph(GraphState)
+        graph_builder.add_node("add", chatbot)
+        graph_builder.add_edge(START, "add")
+        graph_builder.add_edge("add", END)
+        graph = graph_builder.compile()
 
-    print(res)
+        await asyncio.sleep(1 + 9 * random())  # 1s - 10s delay.
+        print(f"{name} queried.")
+        res = await graph.ainvoke(
+            {"messages": [{"role": "user", "content": f"Hello, I am {name}."}]}
+        )
+        print(f"For {name}: {res["messages"][-1].content}")
+
+    async with asyncio.TaskGroup() as tg:
+        names = [
+            "Luke Skywalker",
+            "Darth Vader",
+            "Princess Leia",
+            "Han Solo",
+            "Obi-Wan Kenobi",
+            "Yoda",
+            "Emperor Palpatine",
+            "Boba Fett",
+            "Ahsoka Tano",
+            "Mace Windu",
+            "R2D2",
+            "C3PO",
+        ]
+
+        tasks = []
+        for i in range(4):
+            tasks.append(tg.create_task(user_thread(names[i])))
+
+        await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
