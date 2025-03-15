@@ -3,7 +3,7 @@ import uuid
 
 from langchain.chat_models import init_chat_model
 
-from batched_queue import BatchedQueueAsync
+from lib.batched_queue import BatchedQueueAsync
 
 
 class LLMScheduler:
