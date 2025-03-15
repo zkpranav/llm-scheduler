@@ -2,8 +2,10 @@ import asyncio
 import uuid
 
 from langchain.chat_models import init_chat_model
+from groq import AsyncGroq
 
 from lib.batched_queue import BatchedQueueAsync
+from lib.utils import groq_generate
 
 
 class LLMScheduler:
@@ -18,7 +20,9 @@ class LLMScheduler:
         self.queue = BatchedQueueAsync(n=2, timeout=3.0)
         self.results: dict[uuid.UUID, asyncio.Future] = {}
 
-        self.model = init_chat_model("llama3-8b-8192", model_provider="groq")
+        # self.model = init_chat_model("llama3-8b-8192", model_provider="groq")
+
+        self.model = AsyncGroq()
 
         self.worker_task = asyncio.create_task(self._worker())
 
@@ -48,11 +52,14 @@ class LLMScheduler:
         """
         while True:
             batch = await self.queue.retrieve()
-            print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
+            # print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
 
-            # NOTE: Does not actually use the batch API.
-            # TODO: Integrate groq's batch API & add a consumer queue for results.
-            res = await self.model.abatch([b[1] for b in batch])
+            # NOTE: Langchain Runnable's .batch() does not actually use the batch API, just makes parallel (concurrent) io calls.
+            # res = await self.model.abatch([b[1] for b in batch])
+
+            res = await asyncio.gather(
+                *[groq_generate(self.model, b[1]) for b in batch]
+            )
 
             for i in range(len(batch)):
                 self.results[batch[i][0]].set_result(res[i])

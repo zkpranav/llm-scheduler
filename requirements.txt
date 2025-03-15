@@ -1,3 +1,4 @@
 langchain-core
 langgraph
 langchain[groq]
+groq
