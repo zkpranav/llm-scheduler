@@ -50,6 +50,8 @@ class LLMScheduler:
             batch = await self.queue.retrieve()
             print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
 
+            # NOTE: Does not actually use the batch API.
+            # TODO: Integrate groq's batch API & add a consumer queue for results.
             res = await self.model.abatch([b[1] for b in batch])
 
             for i in range(len(batch)):
