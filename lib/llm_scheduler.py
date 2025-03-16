@@ -2,10 +2,11 @@ import asyncio
 import uuid
 
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import AnyMessage
 from groq import AsyncGroq
 
 from lib.batched_queue import BatchedQueueAsync
-from lib.utils import groq_generate
+from lib.utils import groq_generate_batch_fake
 
 
 class LLMScheduler:
@@ -26,7 +27,7 @@ class LLMScheduler:
 
         self.worker_task = asyncio.create_task(self._worker())
 
-    async def __call__(self, messages: list):
+    async def __call__(self, messages: list[AnyMessage]):
         """Process a single LLM request.
 
         Args:
@@ -51,15 +52,13 @@ class LLMScheduler:
         and made available to the waiting callers.
         """
         while True:
-            batch = await self.queue.retrieve()
+            batch: list[tuple[str, list[AnyMessage]]] = await self.queue.retrieve()
             # print(f"Processing jobs: {", ".join([str(b[0]) for b in batch])}")
 
             # NOTE: Langchain Runnable's .batch() does not actually use the batch API, just makes parallel (concurrent) io calls.
             # res = await self.model.abatch([b[1] for b in batch])
 
-            res = await asyncio.gather(
-                *[groq_generate(self.model, b[1]) for b in batch]
-            )
+            res = await groq_generate_batch_fake(self.model, batch)
 
             for i in range(len(batch)):
                 self.results[batch[i][0]].set_result(res[i])
