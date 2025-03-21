@@ -12,7 +12,7 @@ from lib.llm_scheduler import LLMScheduler
 
 
 async def main():
-    os.environ["GROQ_API_KEY"] = getpass.getpass("GROQ_API_KEY: ")
+    os.environ["GROQ_API_KEY"] = getpass.getpass("GROQ_API_KEY: ").strip()
 
     llm_scheduler = LLMScheduler()
 
@@ -30,7 +30,7 @@ async def main():
         graph = graph_builder.compile()
 
         # await asyncio.sleep(1 + 9 * random())  # 1s - 10s delay.
-        await asyncio.sleep(0.5 + 1.5 * random())  # 1s - 10s delay.
+        await asyncio.sleep(0.5 + 1.5 * random())  # 0.5s - 2s delay.
         print(f"{name} queried.")
         res = await graph.ainvoke(
             {"messages": [{"role": "user", "content": f"Hello, I am {name}."}]}
